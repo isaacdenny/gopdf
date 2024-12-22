@@ -12,6 +12,7 @@ import (
 	"io"
 	"log"
 	"math"
+	"net/http"
 	"os"
 	"strconv"
 	"strings"
@@ -1795,8 +1796,32 @@ func (gp *GoPdf) setSubsetFontObject(subsetFont *SubsetFontObj, family string, o
 // AddTTFFontWithOption : add font file
 func (gp *GoPdf) AddTTFFontWithOption(family string, ttfpath string, option TtfOption) error {
 
+	if ttfpath == "" {
+		return errors.New("ttfpath is required")
+	}
+
 	if _, err := os.Stat(ttfpath); os.IsNotExist(err) {
-		return err
+		client := &http.Client{
+			Timeout: 10 * time.Second,
+		}
+
+		resp, err := client.Get(ttfpath)
+		if err != nil {
+			return fmt.Errorf("Failed to download font: %v", err)
+		}
+		defer resp.Body.Close()
+
+		if resp.StatusCode != http.StatusOK {
+			return fmt.Errorf("Failed to download font: status code %d", resp.StatusCode)
+		}
+
+		data, err := io.ReadAll(resp.Body)
+		if err != nil {
+			return fmt.Errorf("failed to read font data: %v", err)
+		}
+
+		rd := bytes.NewReader(data)
+		return gp.AddTTFFontByReaderWithOption(family, rd, option)
 	}
 	data, err := os.ReadFile(ttfpath)
 	if err != nil {
